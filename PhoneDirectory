@@ -1,0 +1,55 @@
+import json
+
+class PhoneDirectory:
+    def __init__(self):
+        self.contacts = []
+        self.filename = "phone_directory.txt"
+        self.load_contacts()
+
+    def load_contacts(self):
+        try:
+            with open(self.filename, "r") as file:
+                self.contacts = json.load(file)
+        except FileNotFoundError:
+            self.contacts = []
+
+    def save_contacts(self):
+        with open(self.filename, "w") as file:
+            json.dump(self.contacts, file)
+
+    def display_contacts(self, page, page_size):
+        start = page * page_size
+        end = min(start + page_size, len(self.contacts))
+        for i in range(start, end):
+            print(self.contacts[i])
+
+    def add_contact(self, contact):
+        self.contacts.append(contact)
+        self.save_contacts()
+
+    def edit_contact(self, index, new_contact):
+        if 0 <= index < len(self.contacts):
+            self.contacts[index] = new_contact
+            self.save_contacts()
+        else:
+            print("Contact not found")
+
+    def search_contacts(self, query):
+        results = [contact for contact in self.contacts if query in contact]
+        return results
+
+
+class Contact:
+    def __init__(self, last_name, first_name, middle_name, organization, work_phone, mobile_phone):
+        self.last_name = last_name
+        self.first_name = first_name
+        self.middle_name = middle_name
+        self.organization = organization
+        self.work_phone = work_phone
+        self.mobile_phone = mobile_phone
+
+# Пример использования
+directory = PhoneDirectory()
+contact1 = Contact("Иванов", "Иван", "Иванович", "ООО Рога и копыта", "1234567", "+79001234567")
+directory.add_contact(vars(contact1))
+directory.display_contacts(0, 10)
