@@ -1,0 +1,64 @@
+Распределение пользователей по группам:
+def distribute_user_to_group(product, user):
+   
+    group = product.group_set.first()  # Предположим, что первая доступная группа
+    group.students.add(user)
+    group.save()
+
+def distribute_users_evenly(product, user):
+    groups = product.group_set.all().order_by('students_count')
+    
+    min_students = groups[0].min_users
+    max_students = groups[0].max_users
+    
+    min_group = groups.first()
+    for group in groups:
+        if group.students_count < min_group.students_count:
+            min_group = group
+    
+    if min_group.students_count < max_students:
+        min_group.students.add(user)
+        min_group.save()
+    else:
+        new_group = product.group_set.create(group_name="Group " + str(len(groups)+1), min_users=min_students, max_users=max_students)
+        new_group.students.add(user)
+        new_group.save()
+
+Реализация API для списка доступных продуктов:
+# Сериализатор для списка продуктов
+class AvailableProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['id', 'title', 'lesson_count']
+
+# Представление для списка доступных продуктов
+class AvailableProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.all()
+    serializer_class = AvailableProductSerializer
+
+Реализация API для списка уроков по конкретному продукту:
+# Сериализатор для списка уроков по продукту
+class LessonSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Lesson
+        fields = ['title', 'video_link']
+
+# Представление для списка уроков по продукту
+from rest_framework.response import Response
+from rest_framework.decorators import action
+
+class LessonViewSet(viewsets.ViewSet):
+    @action(detail=True, methods=['get'])
+    def lessons_for_product(self, request, pk=None):
+        product = Product.objects.get(id=pk)
+        lessons = Lesson.objects.filter(product=product)
+        serializer = LessonSerializer(lessons, many=True)
+        return Response(serializer.data)
+Регистрация API маршрутов:
+router = routers.DefaultRouter()
+router.register(r'available-products', AvailableProductViewSet, basename='available-products')
+router.register(r'lessons', LessonViewSet, basename='lessons')
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
