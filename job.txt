@@ -1,0 +1,324 @@
+Создание базовой структуры проекта:
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+</dependency>
+Разработка моделей данных:
+// Модель User
+public class User {
+    private Long id;
+    private String username;
+    private String password;
+    private String fullName;
+    private String phoneNumber;
+    private String email;
+    private LocalDate birthDate;
+    // Геттеры, сеттеры и другие методы
+}
+
+// Модель BankAccount
+public class BankAccount {
+    private Long id;
+    private Long userId;
+    private BigDecimal balance;
+    // Геттеры, сеттеры и другие методы
+}
+
+// Модель Transaction
+public class Transaction {
+    private Long id;
+    private Long fromAccountId;
+    private Long toAccountId;
+    private BigDecimal amount;
+    private LocalDateTime timestamp;
+    // Геттеры, сеттеры и другие методы
+}
+Создание RESTful API:
+ UserController:
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+    
+    @Autowired
+    private UserService userService;
+
+    @PostMapping("/create")
+    public ResponseEntity<User> createUser(@RequestBody UserDTO userDTO) {
+        User newUser = userService.createUser(userDTO);
+        return ResponseEntity.ok(newUser);
+    }
+
+    @GetMapping("/{userId}")
+    public ResponseEntity<User> getUserById(@PathVariable Long userId) {
+        User user = userService.getUserById(userId);
+        return ResponseEntity.ok(user);
+    }
+
+    // Другие методы для обновления, удаления и поиска пользователей
+}
+ BankAccountController:
+@RestController
+@RequestMapping("/api/accounts")
+public class BankAccountController {
+    
+    @Autowired
+    private BankAccountService bankAccountService;
+
+    @PostMapping("/create")
+    public ResponseEntity<BankAccount> createBankAccount(@RequestBody BankAccountDTO bankAccountDTO) {
+        BankAccount newAccount = bankAccountService.createBankAccount(bankAccountDTO);
+        return ResponseEntity.ok(newAccount);
+    }
+
+    @GetMapping("/{accountId}")
+    public ResponseEntity<BankAccount> getBankAccountById(@PathVariable Long accountId) {
+        BankAccount account = bankAccountService.getBankAccountById(accountId);
+        return ResponseEntity.ok(account);
+    }
+
+    // Другие методы для обновления, удаления и поиска банковских счетов
+}
+TransactionController:
+@RestController
+@RequestMapping("/api/transactions")
+public class TransactionController {
+    
+    @Autowired
+    private TransactionService transactionService;
+
+    @PostMapping("/make")
+    public ResponseEntity<Transaction> makeTransaction(@RequestBody TransactionDTO transactionDTO) {
+        Transaction newTransaction = transactionService.makeTransaction(transactionDTO);
+        return ResponseEntity.ok(newTransaction);
+    }
+
+    @GetMapping("/{transactionId}")
+    public ResponseEntity<Transaction> getTransactionById(@PathVariable Long transactionId) {
+        Transaction transaction = transactionService.getTransactionById(transactionId);
+        return ResponseEntity.ok(transaction);
+    }
+
+    // Другие методы для поиска и управления транзакциями
+}
+ Использование Spring Data JPA:
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    // Методы для работы с пользователями
+}
+
+@Repository
+public interface BankAccountRepository extends JpaRepository<BankAccount, Long> {
+    // Методы для работы с банковскими аккаунтами
+}
+
+@Repository
+public interface TransactionRepository extends JpaRepository<Transaction, Long> {
+    // Методы для работы с транзакциями
+}
+Обработка процентов и валидация операций:
+Обработка процентов по балансу пользователей -
+@Service
+public class InterestService {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Scheduled(fixedRate = 60000) // каждая минута
+    public void addInterest() {
+        List<User> users = userRepository.findAll();
+        users.forEach(user -> {
+            BigDecimal currentBalance = user.getBalance();
+            BigDecimal increasedBalance = currentBalance.multiply(BigDecimal.valueOf(0.05)).add(currentBalance);
+            // Ограничиваем увеличение до 207%
+            if (increasedBalance.compareTo(currentBalance.multiply(BigDecimal.valueOf(2.07))) <= 0) {
+                user.setBalance(increasedBalance);
+                userRepository.save(user);
+            }
+        });
+    }
+}
+Валидация операций с балансами счетов:
+@Service
+public class TransactionService {
+
+    @Autowired
+    private BankAccountRepository bankAccountRepository;
+
+    public void makeTransaction(TransactionDTO transactionDTO) {
+        BankAccount fromAccount = bankAccountRepository.findById(transactionDTO.getFromAccountId()).orElseThrow(() -> new EntityNotFoundException("From Account not found"));
+        BankAccount toAccount = bankAccountRepository.findById(transactionDTO.getToAccountId()).orElseThrow(() -> new EntityNotFoundException("To Account not found"));
+
+        BigDecimal amount = transactionDTO.getAmount();
+        if (fromAccount.getBalance().compareTo(amount) < 0) {
+            throw new InsufficientFundsException("Not enough balance in the from account");
+        }
+
+        // Выполняем операцию перевода
+        fromAccount.setBalance(fromAccount.getBalance().subtract(amount));
+        toAccount.setBalance(toAccount.getBalance().add(amount));
+        
+        bankAccountRepository.save(fromAccount);
+        bankAccountRepository.save(toAccount);
+    }
+}
+Аутентификация через JWT и тестирование :
+Интеграция аутентификации через JWT с помощью Spring Security -
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.csrf().disable()
+            .authorizeRequests()
+            .antMatchers("/api/auth/**").permitAll()
+            .anyRequest().authenticated()
+            .and()
+            .apply(new JwtConfigurer(jwtTokenProvider));
+    }
+
+    @Override
+    public void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.authenticationProvider(jwtAuthenticationProvider());
+    }
+
+    @Bean
+    public JwtAuthenticationProvider jwtAuthenticationProvider() {
+        return new JwtAuthenticationProvider();
+    }
+
+    @Bean
+    public JwtTokenProvider jwtTokenProvider() {
+        return new JwtTokenProvider();
+    }
+}
+Написание тестов для проверки функционала переводов денег:
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class TransactionServiceTest {
+
+    @Autowired
+    private TransactionService transactionService;
+
+    @MockBean
+    private BankAccountRepository bankAccountRepository;
+
+    @Test
+    public void testMakeTransaction() {
+        // Подготовка данных для теста
+        BankAccount fromAccount = new BankAccount();
+        fromAccount.setId(1L);
+        fromAccount.setBalance(new BigDecimal("100.00"));
+        
+        BankAccount toAccount = new BankAccount();
+        toAccount.setId(2L);
+        toAccount.setBalance(new BigDecimal("50.00"));
+
+        // Симуляция работы репозитория
+        Mockito.when(bankAccountRepository.findById(1L)).thenReturn(Optional.of(fromAccount));
+        Mockito.when(bankAccountRepository.findById(2L)).thenReturn(Optional.of(toAccount));
+
+        // Выполнение метода транзакции
+        TransactionDTO transactionDTO = new TransactionDTO(1L, 2L, new BigDecimal("30.00"));
+        transactionService.makeTransaction(transactionDTO);
+
+        // Проверка балансов после транзакции
+        assertEquals(new BigDecimal("70.00"), fromAccount.getBalance());
+        assertEquals(new BigDecimal("80.00"), toAccount.getBalance());
+    }
+}
+Интеграция OpenAPI/Swagger и логирование:
+Добавление зависимости для Swagger в файл pom.xml
+<dependency>
+    <groupId>io.springfox</groupId>
+    <artifactId>springfox-boot-starter</artifactId>
+    <version>3.0.0</version>
+</dependency>
+Создание конфигурации для Swagger и Swagger UI:
+@Configuration
+@EnableSwagger2
+public class SwaggerConfig {
+
+    @Bean
+    public Docket api() {
+        return new Docket(DocumentationType.SWAGGER_2)
+            .select()
+            .apis(RequestHandlerSelectors.basePackage("your.base.package"))
+            .paths(PathSelectors.any())
+            .build()
+            .apiInfo(apiInfo());
+    }
+
+    private ApiInfo apiInfo() {
+        return new ApiInfoBuilder()
+            .title("Your API Title")
+            .description("Your API Description")
+            .version("1.0")
+            .build();
+    }
+}
+Настройка логирования операций и событий в сервисе:
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-log4j2</artifactId>
+</dependency>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+    <springProperty scope="context" name="LOG_PATH" source="logging.path"/>
+    <appender name="file" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/application.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/application.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+    </appender>
+    <root level="info">
+        <appender-ref ref="file"/>
+    </root>
+</configuration>
+Добавление дополнительных технологий при необходимости:
+Интеграция Redis для кэширования данных -
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+
+@Configuration
+@EnableCaching
+public class RedisConfig extends CachingConfigurerSupport {
+
+    @Bean
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
+        template.setConnectionFactory(redisConnectionFactory);
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
+        return template;
+    }
+}
+Использование Elasticsearch для поиска и аналитики данных:
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+</dependency>
+
+@Configuration
+@EnableElasticsearchRepositories(basePackages = "your.elasticsearch.repository.package")
+public class ElasticsearchConfig extends AbstractElasticsearchConfiguration {
+
+    @Override
+    @Bean
+    public RestHighLevelClient elasticsearchClient() {
+        return RestClients.create(ClientConfiguration.create("localhost:9200")).rest();
+    }
+}
