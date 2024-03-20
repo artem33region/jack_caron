@@ -1,0 +1,144 @@
+1. Установка Laravel и необходимых зависимостей:
+     composer create-project --prefer-dist laravel/laravel notebook-api
+   
+cd notebook-api
+
+composer require darkaonline/l5-swagger
+   
+ 2. Создание миграции и модели для записной книжки:
+php artisan make:model Notebook -m
+`php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateNotebooksTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('notebooks', function (Blueprint $table) {
+            $table->id();
+            $table->string('full_name');
+            $table->string('company');
+            $table->string('phone');
+            $table->string('email');
+            $table->date('birth_date');
+            $table->string('photo')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('notebooks');
+    }
+}`
+
+php artisan migrate
+
+3. Миграция и загрузка данных:
+php artisan migrate
+
+4. Настройка маршрутов API:
+     Route::prefix('v1')->group(function () {
+         Route::get('/notebook', 'NotebookController@index');
+         Route::post('/notebook', 'NotebookController@store');
+         Route::get('/notebook/{id}', 'NotebookController@show');
+         Route::put('/notebook/{id}', 'NotebookController@update');
+         Route::delete('/notebook/{id}', 'NotebookController@destroy');
+     });
+    
+
+5. Создание контроллера для работы с записной книжкой:
+
+php artisan make:controller NotebookController --api
+
+6. Swagger Integration
+composer require darkaonline/l5-swagger
+
+php artisan vendor:publish --provider "L5Swagger\L5SwaggerServiceProvider"
+
+7. Пагинация для вывода данных постранично:
+use App\Models\Notebook;
+use Illuminate\Http\Request;
+
+class NotebookController extends Controller
+{
+    public function index(Request $request)
+    {
+        $notebooks = Notebook::paginate(10); // указываем количество записей на странице
+
+        return response()->json($notebooks);
+    }
+}
+
+8. Docker Configuration:
+FROM php:7.4-fpm
+
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+RUN apt-get update && apt-get install -y \
+    zip \
+    unzip \
+    git
+
+COPY . /var/www
+
+WORKDIR /var/www
+RUN composer install
+
+CMD php artisan migrate && php artisan serve --host=0.0.0.0 --port=8000
+
+version: '3'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/var/www
+    working_dir: /var/www
+
+docker-compose build
+docker-compose up -d
+
+9. Тестирование и запуск:
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Notebook;
+use Illuminate\Http\Request;
+
+class NotebookController extends Controller
+{
+    public function index()
+    {
+        return Notebook::paginate(10);
+    }
+
+    public function store(Request $request)
+    {
+        return Notebook::create($request->all());
+    }
+
+    public function show($id)
+    {
+        return Notebook::findOrFail($id);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $notebook = Notebook::findOrFail($id);
+        $notebook->update($request->all());
+        return $notebook;
+    }
+
+    public function destroy($id)
+    {
+        $notebook = Notebook::findOrFail($id);
+        $notebook->delete();
+        return response()->json(['message' => 'Deleted successfully']);
+    }
+}
